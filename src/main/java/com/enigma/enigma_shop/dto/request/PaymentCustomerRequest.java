@@ -1,5 +1,6 @@
 package com.enigma.enigma_shop.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 @Getter
@@ -7,8 +8,7 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class PaymentItemDetailRequest {
-	private Long price;
-	private Integer quantity;
+public class PaymentCustomerRequest {
+	@JsonProperty("first_name")
 	private String name;
 }

@@ -7,8 +7,7 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class PaymentItemDetailRequest {
-	private Long price;
-	private Integer quantity;
-	private String name;
+public class UpdateTransactionStatusRequest {
+	private String orderId;
+	private String transactionStatus;
 }

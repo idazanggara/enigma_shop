@@ -1,28 +1,29 @@
 package com.enigma.enigma_shop.service.impl;
 
+import com.enigma.enigma_shop.constant.TransactionStatus;
 import com.enigma.enigma_shop.dto.request.TransactionDetailRequest;
 import com.enigma.enigma_shop.dto.request.TransactionRequest;
-import com.enigma.enigma_shop.entity.Customer;
-import com.enigma.enigma_shop.entity.Product;
-import com.enigma.enigma_shop.entity.Transaction;
-import com.enigma.enigma_shop.entity.TransactionDetail;
+import com.enigma.enigma_shop.dto.request.UpdateTransactionStatusRequest;
+import com.enigma.enigma_shop.dto.response.CustomerResponse;
+import com.enigma.enigma_shop.dto.response.PaymentResponse;
+import com.enigma.enigma_shop.dto.response.TransactionDetailResponse;
+import com.enigma.enigma_shop.dto.response.TransactionResponse;
+import com.enigma.enigma_shop.entity.*;
 import com.enigma.enigma_shop.repository.TransactionDetailRepository;
 import com.enigma.enigma_shop.repository.TransactionRepository;
-import com.enigma.enigma_shop.service.CustomerService;
-import com.enigma.enigma_shop.service.ProductService;
-import com.enigma.enigma_shop.service.TransactionDetailService;
-import com.enigma.enigma_shop.service.TransactionService;
+import com.enigma.enigma_shop.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Date;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j // ini anotasi untuk standart logger for java dari lombok, ini kita kasih akhir aja setelah berhasi save
 public class TransactionServiceImpl implements TransactionService {
 	// nah kalau begini enggak di sarankan guys, ini namanya
 	// Cross Repository
@@ -37,54 +38,95 @@ public class TransactionServiceImpl implements TransactionService {
 	private final CustomerService customerService;
 	private final ProductService productService;
 
-	// karena bagian dari transaksi, kita pakai anotasi
-	@Transactional(rollbackFor = Exception.class) // ini auto commit, trus rollback kalau ada Exeption
-	// jadi enggak ada logika lagi, udah di tanganin sama anotasi
-	@Override
-	public Transaction create(TransactionRequest request) {
-		// kita harus cari/validasi cutomer
-		Customer customer = customerService.getById(request.getCustomerId()); // degnan getById, kalian udah validasi juga, jadi kalau customernya enggak ada, udah di throw dan di rollback
+	// setelah REST CLIENT, UNTUK MIDTRANS
+	private final PaymentService paymentService;
 
-		// kita simpan dulu Transaction baru setelah itu simpan TransactionDetail
-		// 1 Save Transaction table
+	@Transactional(rollbackFor = Exception.class)
+	@Override
+	public TransactionResponse create(TransactionRequest request) {
+		Customer customer = customerService.getById(request.getCustomerId());
 		Transaction trx = Transaction.builder()
-						.customer(customer) // nah ini kan ke cutomer, boleh enggak panggil repo customer? enggak kan, jadi kita manggil customer service
+						.customer(customer)
 						.transDate(new Date())
-//						.transactionDetails() ini belum ada isinya ya
 						.build();
 		transactionRepository.saveAndFlush(trx);
-//		transactionRepository.saveAndFlush(request);// begini kenapa enggak bisa? karena request bukan entity
 
-		// 2 Save Transaction Detail Table
-		// nah bisa bikin list dulu ya guys
-		List<TransactionDetail> trxDetail = request.getTransactionDetails().stream()
+		List<TransactionDetail> trxDetails = request.getTransactionDetails().stream()
 						.map(detailRequest -> {
-											//validasi product
-							log.info("Quantity dari detail request: {}", detailRequest.getQty());
 							Product product = productService.getById(detailRequest.getProductId());
 							// buat ngurangi stock
-							if(product.getStock() - detailRequest.getQty() < 0) throw new RuntimeException("Sold Out");
+							if(product.getStock() - detailRequest.getQty() < 0) throw new ResponseStatusException(HttpStatus.NOT_ACCEPTABLE, "the product currently out of stock");
 
 							product.setStock(product.getStock() - detailRequest.getQty());
+							productService.update(product);
 
 							return TransactionDetail.builder()
 											.product(product)
-											// cuman ada yg kuran nih, si transactionDetail ini butuh transaksi enggak? butuh ya, buat masukkin transaksi_idnya
 											.transaction(trx)
 											.qty(detailRequest.getQty())
 											.productPrice(product.getPrice())
 											.build();
 						}).toList();
-//		transactionDetailService.createBulk(request.getTransactionDetails()); // ini enggak sesuai typedatanya ya, jadi enggak masuk, yg diminta itu entity transactionDetail yg di berikan DTO transactionDetailReq uest
 
-		transactionDetailService.createBulk(trxDetail);
-		trx.setTransactionDetails(trxDetail); // ini buat nambahin data trxDetail ke trxnya, biar saat kita return, dia dapet. enggak null
+		transactionDetailService.createBulk(trxDetails);
+		trx.setTransactionDetails(trxDetails);
 
-		return trx;
+		List<TransactionDetailResponse> trxDetailResponses = trxDetails.stream().map(detail ->
+						TransactionDetailResponse.builder()
+										.id(detail.getId())
+										.productId(detail.getProduct().getId())
+										.productPrice(detail.getProductPrice())
+										.quantity(detail.getQty())
+										.build()).toList();
+
+		Payment payment = paymentService.createPayment(trx);
+		trx.setPayment(payment);
+
+		CustomerResponse customerResponse = CustomerResponse.builder()
+						.id(trx.getCustomer().getId())
+						.name(trx.getCustomer().getName())
+						.mobilePhoneNo(trx.getCustomer().getMobilePhoneNo())
+						.address(trx.getCustomer().getAddress())
+						.status(trx.getCustomer().getStatus())
+						.userAccountId(trx.getCustomer().getUserAccount().getId())
+						.build();
+
+
+		PaymentResponse paymentResponse = PaymentResponse.builder()
+						.id(payment.getId())
+						.token(payment.getToken())
+						.redirectUrl(payment.getRedirectUrl())
+						.transactionStatus(payment.getTransactionStatus())
+						.build();
+
+		return TransactionResponse.builder()
+						.id(trx.getId())
+						.customer(customerResponse)
+						.transDate(trx.getTransDate())
+						.transactionDetails(trxDetailResponses)
+						.paymentResponse(paymentResponse)
+						.build();
 	}
 
 	@Override
 	public List<Transaction> getAll() {
 		return transactionRepository.findAll();
+	}
+
+	@Transactional(rollbackFor = Exception.class)
+	@Override
+	public void updateStatus(UpdateTransactionStatusRequest request) {
+		// kita cari transaksinya dari transaksi id yg kritim oleh midtrans
+		Transaction transaction = transactionRepository.findById(request.getOrderId())
+						.orElseThrow(() ->
+										new ResponseStatusException(HttpStatus.NOT_FOUND, "data not found"));
+		// paymen langsung kita ubah
+		Payment payment = transaction.getPayment();
+		payment.setTransactionStatus(request.getTransactionStatus());
+		// kita enggak perlu update, karena dengan transactional, dia udah otomatis update, ketika kita set
+
+		// walaupun ini bukan repositorynya ya, kita di transaction tetep bisa ubah payment
+
+
 	}
 }

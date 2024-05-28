@@ -19,7 +19,8 @@ public class PaymentRequest {
 
 	@JsonProperty("enabled_payments")
 	private List<String> paymentMethod;
+	// paymentnya yg kita izinjkan cuman beberapa nanti
 
-//	@JsonProperty("customer_details")
-//	private PaymentCustomerRequest customer;
+	@JsonProperty("customer_details")
+	private PaymentCustomerRequest customer;
 }

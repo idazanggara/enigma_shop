@@ -4,6 +4,7 @@ import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -36,7 +37,9 @@ public class SecurityConfiguration {
 						.authorizeHttpRequests(req -> req
 										.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll() // kalau error kita permit juga
 										.requestMatchers("/api/v1/auth/**").permitAll()  // jadi semua yg akse /api/auth kita permit dulu atau disable authnya. dan selain itu baru kita authenticated
+										.requestMatchers(HttpMethod.POST, "/api/v1/transactions/status").permitAll()
 										.requestMatchers("/api/v1/test-download/**").permitAll()
+										.requestMatchers(HttpMethod.GET,"/api/v1/products/**").permitAll()
 										.anyRequest().authenticated()) // regist dan login enggak butuh auth
 //						.addFilter() cuman filternya belum ada, jadi buat dulu
 						.addFilterBefore(

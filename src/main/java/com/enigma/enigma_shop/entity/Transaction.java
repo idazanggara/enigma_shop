@@ -34,4 +34,9 @@ public class Transaction {
 	@Temporal(TemporalType.TIMESTAMP) // kalau date doang enggak detail guys, jadi harus kita detailkan
 	@Column(name = "trans_date", updatable = false) // biar enggak boleh di upate
 	private Date transDate;
+
+	// seteleh rest-client
+	@OneToOne
+	@JoinColumn(name = "payment_id", unique = true)
+	private Payment payment;
 }
